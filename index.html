@@ -983,7 +983,7 @@ function applySession() {
   document.querySelectorAll('.auto-name').forEach(function(el){ el.value = SESSION.name; });
   document.querySelectorAll('.auto-emp').forEach(function(el){ el.value = SESSION.empId; });
   // Show Admin button only for authorized admin IDs
-  var isAdminUser = ADMIN_EMP_IDS.some(function(id){ return id.toLowerCase() === SESSION.empId.toLowerCase(); });
+  var isAdminUser = _cloudEmps.some(function(e){ return e.id.toLowerCase() === SESSION.empId.toLowerCase(); });
   var adminBtn = document.getElementById('topbar-admin-btn');
   if (adminBtn) adminBtn.style.display = isAdminUser ? 'block' : 'none';
 }
@@ -1176,7 +1176,7 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
    All PIN + Employee ID changes save to Sheet
    and are fetched fresh on every page load
 ================================================ */
-var CONFIG_SHEET = 'https://script.google.com/macros/s/AKfycbyk3lHUIDCZesmXMcQZRDu8PbfwZczrqZafX-TBNuLSLTdSqSqmgM7a_aZlUDxEHUlj/exec';
+var CONFIG_SHEET = 'https://script.google.com/macros/s/AKfycbw81fgrEkmUy4ciCrd9SW7_p4S_34VDpwwExtYDKQKl1QI2wfXRyfBCRhTUkWl3_GHo/exec';
 
 var ADMIN_UNLOCKED = false;
 var _cloudPin  = '200526';          // fallback until cloud loads
@@ -1188,20 +1188,27 @@ var _configLoaded = false;
 
 /* ---- Load config from Google Sheet on page load ---- */
 function loadCloudConfig() {
-  fetch(CONFIG_SHEET)
-    .then(function(r){ return r.json(); })
-    .then(function(data) {
-      if (data.pin)  _cloudPin  = String(data.pin).trim();
-      if (data.emps) {
-        var ids = String(data.emps).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-        _cloudEmps = ids.map(function(id){ return { id: id, name: '' }; });
-      }
-      _configLoaded = true;
-    })
-    .catch(function(err){
-      console.warn('Config load failed, using fallback:', err);
-      _configLoaded = true;
-    });
+  var script = document.createElement('script');
+  var cbName = '_configCallback_' + Date.now();
+  window[cbName] = function(data) {
+    if (data.pin)  _cloudPin  = String(data.pin).trim();
+    if (data.emps) {
+      var ids = String(data.emps).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      _cloudEmps = ids.map(function(id){ return { id: id, name: '' }; });
+    }
+    _configLoaded = true;
+    if (SESSION.empId) applySession();
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+  };
+  script.onerror = function() {
+    console.warn('Config load failed, using fallback');
+    _configLoaded = true;
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+  };
+  script.src = CONFIG_SHEET + '?callback=' + cbName;
+  document.head.appendChild(script);
 }
 
 /* ---- Save config back to Google Sheet ---- */
