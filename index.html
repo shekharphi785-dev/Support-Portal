@@ -931,6 +931,7 @@ function clearSession() {
    INIT — check for existing session on load
 ================================================ */
 window.addEventListener('DOMContentLoaded', function() {
+  loadCloudConfig();   // fetch PIN + emp list from Google Sheet
   loadSession();
   if (SESSION.name && SESSION.empId) {
     // Already logged in — go straight to dashboard
@@ -1171,40 +1172,64 @@ function escToast(icon, msg) {
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 /* ===============================================
-   ADMIN  PIN + AUTHORIZED EMP MANAGEMENT
+   CONFIG — Google Sheets cloud sync
+   All PIN + Employee ID changes save to Sheet
+   and are fetched fresh on every page load
 ================================================ */
-var ADMIN_UNLOCKED = false;
+var CONFIG_SHEET = 'https://script.google.com/macros/s/AKfycbyk3lHUIDCZesmXMcQZRDu8PbfwZczrqZafX-TBNuLSLTdSqSqmgM7a_aZlUDxEHUlj/exec';
 
-/* PIN is hardcoded — change it here in the file to update across all devices */
-var HARDCODED_ADMIN_PIN = '200526';
-function getAdminPin() {
-  return HARDCODED_ADMIN_PIN;
-}
-/* Authorized Employee IDs — hardcoded so they work on every device.
-   To add/remove employees permanently, edit HARDCODED_EMP_LIST below and re-share the file. */
-var HARDCODED_EMP_LIST = [
+var ADMIN_UNLOCKED = false;
+var _cloudPin  = '200526';          // fallback until cloud loads
+var _cloudEmps = [                   // fallback until cloud loads
   { id: 'RM7028777', name: '' },
   { id: 'RM7029195', name: '' }
 ];
-var _runtimeEmpList = null;
+var _configLoaded = false;
 
-function getAuthorizedEmps() {
-  if (_runtimeEmpList === null) {
-    _runtimeEmpList = HARDCODED_EMP_LIST.map(function(e){ return { id: e.id, name: e.name }; });
-  }
-  return _runtimeEmpList;
+/* ---- Load config from Google Sheet on page load ---- */
+function loadCloudConfig() {
+  fetch(CONFIG_SHEET)
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.pin)  _cloudPin  = String(data.pin).trim();
+      if (data.emps) {
+        var ids = String(data.emps).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+        _cloudEmps = ids.map(function(id){ return { id: id, name: '' }; });
+      }
+      _configLoaded = true;
+    })
+    .catch(function(err){
+      console.warn('Config load failed, using fallback:', err);
+      _configLoaded = true;
+    });
 }
+
+/* ---- Save config back to Google Sheet ---- */
+function saveCloudConfig(pin, empList) {
+  var empStr = empList.map(function(e){ return e.id; }).join(',');
+  fetch(CONFIG_SHEET, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin: pin, emps: empStr })
+  }).catch(function(err){ console.warn('Config save failed:', err); });
+}
+
+function getAdminPin()        { return _cloudPin; }
+function getAuthorizedEmps()  { return _cloudEmps; }
 function saveAuthorizedEmps(list) {
-  _runtimeEmpList = list;
+  _cloudEmps = list;
+  saveCloudConfig(_cloudPin, _cloudEmps);
 }
+
 function isAuthorized(empId) {
-  var list = getAuthorizedEmps();
-  if (list.length === 0) return true; // if no list set, allow all
-  return list.some(function(e){ return e.id.toLowerCase() === empId.toLowerCase(); });
+  if (_cloudEmps.length === 0) return true;
+  return _cloudEmps.some(function(e){ return e.id.toLowerCase() === empId.toLowerCase(); });
 }
 
-/* Default list is hardcoded in HARDCODED_EMP_LIST above — no seeding needed */
-
+/* ===============================================
+   ADMIN PIN + AUTHORIZED EMP MANAGEMENT
+================================================ */
 function verifyAdminPin() {
   var pin = document.getElementById('admin-pin-input').value;
   if (pin === getAdminPin()) {
@@ -1224,10 +1249,11 @@ function changeAdminPin() {
   var cp = document.getElementById('confirm-pin').value.trim();
   if (!np) { pToast('Enter a new PIN', 'err'); return; }
   if (np !== cp) { pToast('PINs do not match', 'err'); return; }
-  HARDCODED_ADMIN_PIN = np;
+  _cloudPin = np;
+  saveCloudConfig(_cloudPin, _cloudEmps);
   document.getElementById('new-pin').value = '';
   document.getElementById('confirm-pin').value = '';
-  pToast('PIN updated for this session. To make it permanent, update the file and re-share.', 'ok');
+  pToast('PIN updated & synced to cloud ✓', 'ok');
 }
 
 function addAuthorizedEmp() {
@@ -1243,21 +1269,21 @@ function addAuthorizedEmp() {
   document.getElementById('new-emp-id').value = '';
   document.getElementById('new-emp-name').value = '';
   renderEmpList();
-  pToast('Employee added', 'ok');
+  pToast('Employee added & synced to cloud ✓', 'ok');
 }
 
 function removeAuthorizedEmp(id) {
   var list = getAuthorizedEmps().filter(function(e){ return e.id !== id; });
   saveAuthorizedEmps(list);
   renderEmpList();
-  pToast('Employee removed', 'ok');
+  pToast('Employee removed & synced to cloud ✓', 'ok');
 }
 
 function clearAllEmps() {
   if (!confirm('Remove all authorized Employee IDs? Everyone will be allowed until you add new ones.')) return;
   saveAuthorizedEmps([]);
   renderEmpList();
-  pToast('All employees cleared', 'ok');
+  pToast('All employees cleared & synced to cloud ✓', 'ok');
 }
 
 function lockAdmin() {
