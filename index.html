@@ -838,7 +838,7 @@ td{padding:9px 12px;color:rgba(255,255,255,0.78)}
             <input class="f-input" type="password" id="admin-pin-input" placeholder="Enter admin PIN" autocomplete="off"/>
           </div>
           <button class="f-btn" onclick="verifyAdminPin()">Unlock &nbsp;→</button>
-          <div style="margin-top:12px;font-size:0.72rem;color:rgba(200,180,255,0.4);text-align:center">Default PIN: <span style="color:rgba(200,180,255,0.7);font-family:'JetBrains Mono',monospace">1234</span> — change it below after first login</div>
+          <div style="margin-top:12px;font-size:0.72rem;color:rgba(200,180,255,0.4);text-align:center">PIN is set by the admin — contact your system admin if locked out.</div>
         </div>
 
         <!-- Admin dashboard (hidden until PIN verified) -->
@@ -1175,14 +1175,27 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 ================================================ */
 var ADMIN_UNLOCKED = false;
 
+/* PIN is hardcoded — change it here in the file to update across all devices */
+var HARDCODED_ADMIN_PIN = '200526';
 function getAdminPin() {
-  return localStorage.getItem('admin_pin') || '1234';
+  return HARDCODED_ADMIN_PIN;
 }
+/* Authorized Employee IDs — hardcoded so they work on every device.
+   To add/remove employees permanently, edit HARDCODED_EMP_LIST below and re-share the file. */
+var HARDCODED_EMP_LIST = [
+  { id: 'RM7028777', name: '' },
+  { id: 'RM7029195', name: '' }
+];
+var _runtimeEmpList = null;
+
 function getAuthorizedEmps() {
-  try { return JSON.parse(localStorage.getItem('authorized_emps') || '[]'); } catch(e) { return []; }
+  if (_runtimeEmpList === null) {
+    _runtimeEmpList = HARDCODED_EMP_LIST.map(function(e){ return { id: e.id, name: e.name }; });
+  }
+  return _runtimeEmpList;
 }
 function saveAuthorizedEmps(list) {
-  localStorage.setItem('authorized_emps', JSON.stringify(list));
+  _runtimeEmpList = list;
 }
 function isAuthorized(empId) {
   var list = getAuthorizedEmps();
@@ -1190,16 +1203,7 @@ function isAuthorized(empId) {
   return list.some(function(e){ return e.id.toLowerCase() === empId.toLowerCase(); });
 }
 
-/* Seed default authorized employees if list is empty */
-(function seedDefaults() {
-  var list = getAuthorizedEmps();
-  if (list.length === 0) {
-    saveAuthorizedEmps([
-      { id: 'RM7028777', name: '' },
-      { id: 'RM7029195', name: '' }
-    ]);
-  }
-})();
+/* Default list is hardcoded in HARDCODED_EMP_LIST above — no seeding needed */
 
 function verifyAdminPin() {
   var pin = document.getElementById('admin-pin-input').value;
@@ -1220,10 +1224,10 @@ function changeAdminPin() {
   var cp = document.getElementById('confirm-pin').value.trim();
   if (!np) { pToast('Enter a new PIN', 'err'); return; }
   if (np !== cp) { pToast('PINs do not match', 'err'); return; }
-  localStorage.setItem('admin_pin', np);
+  HARDCODED_ADMIN_PIN = np;
   document.getElementById('new-pin').value = '';
   document.getElementById('confirm-pin').value = '';
-  pToast('PIN updated successfully', 'ok');
+  pToast('PIN updated for this session. To make it permanent, update the file and re-share.', 'ok');
 }
 
 function addAuthorizedEmp() {
